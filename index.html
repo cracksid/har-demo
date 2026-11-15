@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HAR Demo</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; }
+  .card { border: 1px solid #ccc; border-radius: 10px; padding: 12px; margin: 12px 0; }
+  .big { font-size: 26px; font-weight: 600; }
+  .bar { display: flex; align-items: center; margin: 3px 0; font-size: 13px; }
+  .bar .name { width: 140px; }
+  .bar .fill { height: 10px; background: #3b82f6; border-radius: 5px; margin-right: 6px; }
+  button { font-size: 16px; padding: 10px 16px; border-radius: 8px; border: 0; background: #111; color: #fff; }
+  .ok { color: #15803d; font-weight: 600; } .bad { color: #b91c1c; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Activity Recognition: Lightweight 1D CNN</h1>
+<div class="card" id="status">Loading model...</div>
+<div class="card">
+  <div>Demo mode: real windows from the UCI HAR test set</div>
+  <p>Window <span id="idx">-</span> / 18 &middot; true label: <b id="truth">-</b></p>
+  <div class="big" id="pred">-</div>
+  <div id="verdict"></div>
+  <div id="bars"></div>
+  <p><button id="next">Next window</button></p>
+</div>
+<script>
+let M = null, demoI = 0;
+const $ = id => document.getElementById(id);
+const argmax = a => a.indexOf(Math.max(...a));
+
+// x: [T][Cin], w: [K][Cin][Cout], b: [Cout]  ->  [T-K+1][Cout], with ReLU
+function conv1d(x, w, b) {
+  const K = w.length, Cin = w[0].length, Cout = b.length, T = x.length - K + 1;
+  const out = [];
+  for (let t = 0; t < T; t++) {
+    const row = new Array(Cout);
+    for (let o = 0; o < Cout; o++) {
+      let s = b[o];
+      for (let k = 0; k < K; k++) {
+        const xr = x[t + k], wk = w[k];
+        for (let c = 0; c < Cin; c++) s += xr[c] * wk[c][o];
+      }
+      row[o] = s > 0 ? s : 0;
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+function maxpool2(x) {
+  const out = [];
+  for (let t = 0; t + 1 < x.length; t += 2)
+    out.push(x[t].map((v, i) => Math.max(v, x[t + 1][i])));
+  return out;
+}
+
+// win: raw window [128][9] -> 6 probabilities
+function predict(win) {
+  const x = win.map(r => r.map((v, c) => (v - M.mean[c]) / M.std[c]));
+  let h = conv1d(x, M.conv1.w, M.conv1.b);
+  h = maxpool2(h);
+  h = conv1d(h, M.conv2.w, M.conv2.b);
+  const C = M.conv2.b.length, g = new Array(C).fill(0);
+  for (const row of h) for (let c = 0; c < C; c++) g[c] += row[c] / h.length;
+  const logits = M.dense.b.map((b, j) => b + g.reduce((s, v, i) => s + v * M.dense.w[i][j], 0));
+  const mx = Math.max(...logits);
+  const e = logits.map(v => Math.exp(v - mx));
+  const sum = e.reduce((a, b) => a + b, 0);
+  return e.map(v => v / sum);
+}
+
+function selfTest() {
+  let maxDiff = 0, match = 0;
+  M.demo.X.forEach((win, i) => {
+    const p = predict(win);
+    p.forEach((v, j) => { maxDiff = Math.max(maxDiff, Math.abs(v - M.demo.keras_probs[i][j])); });
+    if (argmax(p) === argmax(M.demo.keras_probs[i])) match++;
+  });
+  return { maxDiff, match };
+}
+
+function show(i) {
+  const p = predict(M.demo.X[i]), k = argmax(p), t = M.demo.y[i];
+  $('idx').textContent = i + 1;
+  $('truth').textContent = M.labels[t];
+  $('pred').textContent = M.labels[k];
+  $('verdict').innerHTML = k === t ? '<span class="ok">Correct</span>' : '<span class="bad">Wrong</span>';
+  $('bars').innerHTML = p.map((v, j) =>
+    `<div class="bar"><span class="name">${M.labels[j]}</span><div class="fill" style="width:${Math.round(v * 160)}px"></div>${(v * 100).toFixed(1)}%</div>`
+  ).join('');
+}
+
+fetch('model.json')
+  .then(r => r.json())
+  .then(m => {
+    M = m;
+    const t = selfTest();
+    const pass = t.maxDiff < 0.001 && t.match === 18;
+    $('status').innerHTML = (pass ? '<span class="ok">Self-test passed.</span> ' : '<span class="bad">Self-test FAILED.</span> ') +
+      `JS matches Keras on ${t.match}/18 windows, max probability difference = ${t.maxDiff.toExponential(2)}`;
+    show(0);
+    $('next').onclick = () => { demoI = (demoI + 1) % 18; show(demoI); };
+  })
+  .catch(e => {
+    $('status').innerHTML = '<span class="bad">Could not load model.json.</span> Open this page through the local server (http://localhost:8000), not by double-clicking the file. ' + e;
+  });
+</script>
+</body>
+</html>

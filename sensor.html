@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sensor test</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 16px; }
+  pre { font-size: 15px; line-height: 1.6; }
+  button { font-size: 18px; padding: 12px 20px; border-radius: 8px; border: 0; background: #111; color: #fff; }
+</style></head>
+<body>
+<h1>Sensor test</h1>
+<p><button id="go">Start sensors</button></p>
+<pre id="out">Tap Start.</pre>
+<script>
+const $ = id => document.getElementById(id);
+let n = 0, t0 = 0, last = null, startedAt = 0;
+
+function onMotion(e) {
+  if (!t0) t0 = performance.now();
+  n++;
+  last = {
+    a: e.accelerationIncludingGravity || {},
+    b: e.acceleration || {},
+    r: e.rotationRate || {},
+    iv: e.interval
+  };
+}
+
+function render() {
+  if (!last) {
+    if (performance.now() - startedAt > 3000)
+      $('out').textContent = 'No motion events after 3 s. Use Safari (not an in-app browser) and check the motion permission.';
+    return;
+  }
+  const f = v => (v == null ? 'null' : v.toFixed(2));
+  const secs = (performance.now() - t0) / 1000;
+  $('out').textContent =
+    'accel incl. gravity (m/s2)\n  x ' + f(last.a.x) + '\n  y ' + f(last.a.y) + '\n  z ' + f(last.a.z) +
+    '\n\naccel without gravity (m/s2)\n  x ' + f(last.b.x) + '\n  y ' + f(last.b.y) + '\n  z ' + f(last.b.z) +
+    '\n\nrotation rate (deg/s)\n  alpha ' + f(last.r.alpha) + '\n  beta  ' + f(last.r.beta) + '\n  gamma ' + f(last.r.gamma) +
+    '\n\nevents per second: ' + (n / secs).toFixed(1) +
+    '\nreported interval: ' + last.iv;
+}
+
+$('go').onclick = async () => {
+  try {
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+      const p = await DeviceMotionEvent.requestPermission();
+      if (p !== 'granted') { $('out').textContent = 'Permission: ' + p; return; }
+    }
+    startedAt = performance.now();
+    window.addEventListener('devicemotion', onMotion);
+    setInterval(render, 200);
+    $('go').disabled = true;
+  } catch (err) {
+    $('out').textContent = 'Error: ' + err;
+  }
+};
+</script>
+</body></html>

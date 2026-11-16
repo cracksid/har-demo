@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Activity Recognition</title>
+<style>
+  :root {
+    --bg: #f6f5f0; --card: #ffffff; --text: #1d2a44; --muted: #6a7385; --line: #e3e1d8;
+    --accent: #2b7a78; --accent-soft: #dcefee; --on-accent: #ffffff;
+    --good: #1f8a4c; --good-soft: #dff3e7; --bad: #c0392b; --bad-soft: #f8e0dd;
+    --c1: #2b7a78; --c2: #d98e2b; --c3: #7a5bc7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1720; --card: #17222d; --text: #e8eef5; --muted: #93a1b4; --line: #263444;
+      --accent: #4fb3ae; --accent-soft: #1b3a3d; --on-accent: #08191b;
+      --good: #52c27f; --good-soft: #17352a; --bad: #ef7a6b; --bad-soft: #3d2220;
+      --c1: #4fb3ae; --c2: #f0b04a; --c3: #a58cf0;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap {
+    max-width: 480px; margin: 0 auto;
+    padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(28px + env(safe-area-inset-bottom, 0px));
+  }
+  header h1 { font-size: 24px; margin: 8px 0 2px; letter-spacing: -0.3px; }
+  header p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .tab {
+    flex: 1; height: 42px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--card); color: var(--text); font-size: 15px; font-weight: 600; touch-action: manipulation; cursor: pointer;
+  }
+  .tab.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+  .eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin-bottom: 10px; font-weight: 600; }
+  .pred { display: flex; align-items: center; gap: 12px; }
+  .emoji { font-size: 44px; line-height: 1; }
+  .pred-name { font-size: 30px; font-weight: 700; letter-spacing: -0.5px; line-height: 1.1; }
+  .meta { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .conf { font-size: 15px; color: var(--muted); }
+  .pill { font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+  .pill.ok { background: var(--good-soft); color: var(--good); }
+  .pill.bad { background: var(--bad-soft); color: var(--bad); }
+  .truth { margin-top: 8px; font-size: 14px; color: var(--muted); }
+  .truth b { color: var(--text); }
+  .row { display: grid; grid-template-columns: 128px 1fr 50px; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; }
+  .track { height: 10px; background: var(--accent-soft); border-radius: 6px; overflow: hidden; }
+  .fill { height: 100%; background: var(--accent); border-radius: 6px; width: 0; transition: width .25s ease; }
+  .row.top .lbl { font-weight: 700; }
+  .pct { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .row.top .pct { color: var(--text); font-weight: 700; }
+  .tag { display: none; font-size: 10px; background: var(--line); color: var(--muted); border-radius: 4px; padding: 1px 5px; margin-left: 4px; vertical-align: middle; }
+  .row.istrue .tag { display: inline-block; }
+  canvas { width: 100%; height: 120px; display: block; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  .nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .nav button {
+    width: 64px; height: 48px; font-size: 26px; border: 0; border-radius: 12px;
+    background: var(--accent); color: var(--on-accent); touch-action: manipulation; cursor: pointer;
+  }
+  .nav .count { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 14px 0 10px; }
+  .dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; background: var(--good); padding: 0; touch-action: manipulation; cursor: pointer; }
+  .dot.wrong { background: var(--bad); }
+  .dot.active { border-color: var(--text); transform: scale(1.15); }
+  .summary { font-size: 13px; color: var(--muted); text-align: center; line-height: 1.4; }
+  .status { font-size: 12px; color: var(--muted); text-align: center; margin-top: 8px; line-height: 1.4; }
+  .status.fail { color: var(--bad); font-weight: 700; }
+  .foot { font-size: 12px; color: var(--muted); text-align: center; margin-top: 4px; line-height: 1.4; }
+  .ctrls { display: flex; flex-wrap: wrap; gap: 8px; }
+  .btn {
+    flex: 1 1 auto; height: 44px; padding: 0 14px; border: 0; border-radius: 12px;
+    background: var(--accent); color: var(--on-accent); font-size: 15px; font-weight: 600; touch-action: manipulation; cursor: pointer;
+  }
+  .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  .chk { display: flex; gap: 8px; align-items: center; margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
+  .steps { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 10px 0 0; padding-left: 18px; }
+  .steps li { margin: 4px 0; }
+  .note { font-size: 12px; color: var(--muted); line-height: 1.4; margin-top: 10px; }
+  .raw { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); margin: 10px 0 0; white-space: pre-wrap; }
+  .live-status { font-size: 13px; color: var(--text); margin-top: 12px; line-height: 1.4; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Activity Recognition</h1>
+    <p id="sub">Lightweight 1D CNN · runs on this device</p>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button type="button" class="tab active" id="tabDemo" role="tab" aria-selected="true">Demo</button>
+    <button type="button" class="tab" id="tabLive" role="tab" aria-selected="false">Live</button>
+  </div>
+
+  <!-- ================= DEMO TAB ================= -->
+  <div id="demoPane">
+    <section class="card" aria-live="polite">
+      <div class="eyebrow">Model prediction</div>
+      <div class="pred"><span class="emoji" id="emoji">…</span><span class="pred-name" id="predName">Loading…</span></div>
+      <div class="meta"><span class="conf" id="conf"></span><span class="pill" id="pill"></span></div>
+      <div class="truth">True activity: <b id="truthName">–</b></div>
+    </section>
+
+    <section class="card">
+      <div class="eyebrow">Class probabilities</div>
+      <div id="bars"></div>
+    </section>
+
+    <section class="card">
+      <div class="eyebrow">What the model sees: 2.56 s of accelerometer data</div>
+      <canvas id="sig" aria-label="Accelerometer signal for the current sample"></canvas>
+      <div class="legend">
+        <span><i style="background: var(--c1)"></i>x</span>
+        <span><i style="background: var(--c2)"></i>y</span>
+        <span><i style="background: var(--c3)"></i>z</span>
+        <span>(units of g)</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="nav">
+        <button type="button" id="prev" aria-label="Previous sample">‹</button>
+        <div class="count" id="count">Sample – of –</div>
+        <button type="button" id="next" aria-label="Next sample">›</button>
+      </div>
+      <div class="dots" id="dots"></div>
+      <div class="summary" id="summary"></div>
+    </section>
+
+    <div class="status" id="status">Loading model…</div>
+    <div class="foot">UCI HAR test windows · test accuracy of this model: 91.45% · the model runs in your browser, nothing is sent anywhere</div>
+  </div>
+
+  <!-- ================= LIVE TAB ================= -->
+  <div id="livePane" hidden>
+    <section class="card" aria-live="polite">
+      <div class="eyebrow">Live prediction · experimental</div>
+      <div class="pred"><span class="emoji" id="lEmoji">📱</span><span class="pred-name" id="lName">Not started</span></div>
+      <div class="meta"><span class="conf" id="lConf"></span></div>
+    </section>
+
+    <section class="card">
+      <div class="eyebrow">Class probabilities</div>
+      <div id="lBars"></div>
+    </section>
+
+    <section class="card">
+      <div class="eyebrow">Controls</div>
+      <div class="ctrls">
+        <button type="button" class="btn" id="lStart">Start sensors</button>
+        <button type="button" class="btn" id="lCal" disabled>Calibrate</button>
+        <button type="button" class="btn ghost" id="lRot" disabled>Rotate axes: 0°</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="lSign"> Invert acceleration (on for iPhone)</label>
+      <ol class="steps">
+        <li>Tap <b>Start sensors</b> and allow motion access.</li>
+        <li>Stand up and hold the phone upright, as if it were clipped at your waist (screen facing out, top up). Tap <b>Calibrate</b> and hold still for 2 seconds.</li>
+        <li>Now move: walk, sit, stand, lie down. If the labels look wrong, tap <b>Rotate axes</b> (4 settings) and try again.</li>
+      </ol>
+      <div class="live-status" id="lStatus">Tap Start sensors to begin.</div>
+      <pre class="raw" id="lRaw"></pre>
+      <div class="note">Experimental. The model was trained on a phone worn at the waist, so live results can be unreliable. The Demo tab shows the model's verified accuracy.</div>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const EMOJI = ['🚶', '⬆️', '⬇️', '🪑', '🧍', '🛏️'];
+let M = null, N = 0, results = [], cur = 0;
+const argmax = a => a.indexOf(Math.max(...a));
+
+// ---- model code (same as the verified index.html) ----
+// x: [T][Cin], w: [K][Cin][Cout], b: [Cout]  ->  [T-K+1][Cout], with ReLU
+function conv1d(x, w, b) {
+  const K = w.length, Cin = w[0].length, Cout = b.length, T = x.length - K + 1;
+  const out = [];
+  for (let t = 0; t < T; t++) {
+    const row = new Array(Cout);
+    for (let o = 0; o < Cout; o++) {
+      let s = b[o];
+      for (let k = 0; k < K; k++) {
+        const xr = x[t + k], wk = w[k];
+        for (let c = 0; c < Cin; c++) s += xr[c] * wk[c][o];
+      }
+      row[o] = s > 0 ? s : 0;
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+function maxpool2(x) {
+  const out = [];
+  for (let t = 0; t + 1 < x.length; t += 2)
+    out.push(x[t].map((v, i) => Math.max(v, x[t + 1][i])));
+  return out;
+}
+
+// win: raw window [128][9] -> 6 probabilities
+function predict(win) {
+  const x = win.map(r => r.map((v, c) => (v - M.mean[c]) / M.std[c]));
+  let h = conv1d(x, M.conv1.w, M.conv1.b);
+  h = maxpool2(h);
+  h = conv1d(h, M.conv2.w, M.conv2.b);
+  const C = M.conv2.b.length, g = new Array(C).fill(0);
+  for (const row of h) for (let c = 0; c < C; c++) g[c] += row[c] / h.length;
+  const logits = M.dense.b.map((b, j) => b + g.reduce((s, v, i) => s + v * M.dense.w[i][j], 0));
+  const mx = Math.max(...logits);
+  const e = logits.map(v => Math.exp(v - mx));
+  const sum = e.reduce((a, b) => a + b, 0);
+  return e.map(v => v / sum);
+}
+
+function selfTest() {
+  let maxDiff = 0, match = 0;
+  M.demo.X.forEach((win, i) => {
+    const p = predict(win);
+    p.forEach((v, j) => { maxDiff = Math.max(maxDiff, Math.abs(v - M.demo.keras_probs[i][j])); });
+    if (argmax(p) === argmax(M.demo.keras_probs[i])) match++;
+  });
+  return { maxDiff, match };
+}
+
+// ---- shared interface helpers ----
+const countNums = a => Array.isArray(a) ? a.reduce((s, x) => s + countNums(x), 0) : 1;
+
+function buildBars(el) {
+  el.innerHTML = M.labels.map(l =>
+    '<div class="row"><span class="lbl">' + l + '<span class="tag">true</span></span>' +
+    '<div class="track"><div class="fill"></div></div><span class="pct">0%</span></div>'
+  ).join('');
+}
+
+function updateBars(el, p, k, t) {
+  el.querySelectorAll('.row').forEach((row, j) => {
+    row.classList.toggle('top', j === k);
+    row.classList.toggle('istrue', t != null && j === t);
+    row.querySelector('.fill').style.width = (p[j] * 100).toFixed(1) + '%';
+    row.querySelector('.pct').textContent = (p[j] * 100).toFixed(1) + '%';
+  });
+}
+
+function drawSignal(win) {
+  const cv = $('sig');
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 300, H = cv.clientHeight || 120;
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  const ctx = cv.getContext && cv.getContext('2d');
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const css = getComputedStyle(document.documentElement);
+  const cols = ['--c1', '--c2', '--c3'].map(v => css.getPropertyValue(v).trim() || '#2b7a78');
+  const chans = [6, 7, 8]; // total_acc x, y, z
+  let lo = Infinity, hi = -Infinity;
+  for (const row of win) for (const c of chans) {
+    if (row[c] < lo) lo = row[c];
+    if (row[c] > hi) hi = row[c];
+  }
+  if (hi - lo < 0.5) { const m = (hi + lo) / 2; lo = m - 0.25; hi = m + 0.25; }
+  const pad = 6, sx = (W - 2 * pad) / (win.length - 1), sy = (H - 2 * pad) / (hi - lo);
+  ctx.lineWidth = 1.6;
+  ctx.lineJoin = 'round';
+  chans.forEach((c, ci) => {
+    ctx.strokeStyle = cols[ci];
+    ctx.beginPath();
+    win.forEach((row, t) => {
+      const x = pad + t * sx, y = H - pad - (row[c] - lo) * sy;
+      if (t) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+    });
+    ctx.stroke();
+  });
+}
+
+// ---- demo tab ----
+function show(i) {
+  cur = i;
+  const p = results[i], k = argmax(p), t = M.demo.y[i];
+  $('emoji').textContent = EMOJI[k] || '';
+  $('predName').textContent = M.labels[k];
+  $('conf').textContent = (p[k] * 100).toFixed(1) + '% confidence';
+  const pill = $('pill');
+  pill.textContent = k === t ? 'Correct' : 'Wrong';
+  pill.className = 'pill ' + (k === t ? 'ok' : 'bad');
+  $('truthName').textContent = M.labels[t];
+  updateBars($('bars'), p, k, t);
+  document.querySelectorAll('#dots .dot').forEach((d, j) => d.classList.toggle('active', j === i));
+  $('count').textContent = 'Sample ' + (i + 1) + ' of ' + N;
+  drawSignal(M.demo.X[i]);
+}
+
+// ---- live tab: maths helpers ----
+const G = 9.81, D2R = Math.PI / 180;
+const I3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unit = v => { const n = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / n, v[1] / n, v[2] / n]; };
+const matVec = (R, v) => [dot(R[0], v), dot(R[1], v), dot(R[2], v)];
+const matMul = (A, B) => A.map(row => [0, 1, 2].map(j => row[0] * B[0][j] + row[1] * B[1][j] + row[2] * B[2][j]));
+
+// rotation by angle th about unit axis u (Rodrigues)
+function rotAxisAngle(u, th) {
+  const x = u[0], y = u[1], z = u[2], c = Math.cos(th), s = Math.sin(th), t = 1 - c;
+  return [[t * x * x + c, t * x * y - s * z, t * x * z + s * y],
+          [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
+          [t * x * z - s * y, t * y * z + s * x, t * z * z + c]];
+}
+
+// smallest rotation taking direction a onto direction b
+function alignRot(a, b) {
+  a = unit(a); b = unit(b);
+  const c = cross(a, b), s = Math.hypot(c[0], c[1], c[2]), d = dot(a, b);
+  if (s < 1e-9) {
+    if (d > 0) return I3;
+    const p = Math.abs(a[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+    return rotAxisAngle(unit(cross(a, p)), Math.PI);
+  }
+  return rotAxisAngle([c[0] / s, c[1] / s, c[2] / s], Math.atan2(s, d));
+}
+
+// ---- live tab: state ----
+const live = {
+  on: false, buf: [], last: null, calib: null, Rtilt: null, k: 0, recent: [], timer: null,
+  sign: /iPhone|iPad|iPod/.test(navigator.userAgent) ? -1 : 1,
+  gref: [1, 0, 0]   // dataset gravity direction while standing; set from the demo windows in init()
+};
+
+function currentR() {
+  if (!live.Rtilt) return null;
+  return matMul(rotAxisAngle(unit(live.gref), live.k * Math.PI / 2), live.Rtilt);
+}
+
+// Build one 128 x 9 window (dataset channel order) from the recent sensor buffer.
+// buf: [{t (s), a: [x,y,z] in g, w: [x,y,z] in rad/s}], R: 3x3 rotation into the dataset frame.
+function buildWindow(buf, R) {
+  if (buf.length < 2) return null;
+  const tEnd = buf[buf.length - 1].t, tStart = tEnd - 127 * 0.02;
+  if (buf[0].t > tStart + 1e-9) return null;
+  const tot = [], gyr = [];
+  let j = 0;
+  for (let i = 0; i < 128; i++) {
+    const t = tStart + i * 0.02;
+    while (j < buf.length - 2 && buf[j + 1].t < t) j++;
+    const p = buf[j], q = buf[j + 1];
+    const f = q.t > p.t ? Math.min(1, Math.max(0, (t - p.t) / (q.t - p.t))) : 0;
+    const a = [0, 1, 2].map(c => p.a[c] + f * (q.a[c] - p.a[c]));
+    const w = [0, 1, 2].map(c => p.w[c] + f * (q.w[c] - p.w[c]));
+    tot.push(matVec(R, a));
+    gyr.push(matVec(R, w));
+  }
+  const mean = [0, 1, 2].map(c => tot.reduce((s, v) => s + v[c], 0) / 128);
+  // dataset channel order: body_acc(3), body_gyro(3), total_acc(3); body acc = total minus gravity (window mean)
+  return tot.map((v, i) => [v[0] - mean[0], v[1] - mean[1], v[2] - mean[2], gyr[i][0], gyr[i][1], gyr[i][2], v[0], v[1], v[2]]);
+}
+
+function setLiveStatus(msg) { $('lStatus').textContent = msg; }
+
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity, r = e.rotationRate;
+  if (!a || a.x == null) return;
+  const s = live.sign / G;
+  const smp = {
+    t: performance.now() / 1000,
+    a: [a.x * s, a.y * s, a.z * s],
+    // W3C rotationRate: beta = about x, gamma = about y, alpha = about z (deg/s)
+    w: r ? [(r.beta || 0) * D2R, (r.gamma || 0) * D2R, (r.alpha || 0) * D2R] : [0, 0, 0]
+  };
+  live.last = smp;
+  live.buf.push(smp);
+  while (live.buf.length > 2 && live.buf[0].t < smp.t - 6) live.buf.shift();
+  if (live.calib) {
+    if (live.calib.start == null) live.calib.start = smp.t;
+    live.calib.samples.push(smp.a);
+    if (smp.t - live.calib.start >= 2) finishCalibration();
+  }
+}
+
+function startCalibration() {
+  if (!live.on) { setLiveStatus('Start the sensors first.'); return; }
+  live.calib = { start: null, samples: [] };
+  setLiveStatus('Hold still for 2 seconds…');
+}
+
+function finishCalibration() {
+  const c = live.calib.samples;
+  live.calib = null;
+  const m = [0, 1, 2].map(i => c.reduce((s, v) => s + v[i], 0) / c.length);
+  const mag = Math.hypot(m[0], m[1], m[2]);
+  if (mag < 0.8 || mag > 1.2) {
+    setLiveStatus('Calibration failed: the phone was moving (gravity reads ' + mag.toFixed(2) + ' g, expected 1). Hold still and try again.');
+    return;
+  }
+  live.Rtilt = alignRot(m, live.gref);
+  live.k = 0;
+  live.recent = [];
+  $('lRot').disabled = false;
+  $('lRot').textContent = 'Rotate axes: 0°';
+  setLiveStatus('Calibrated. Now move around. Predictions update about every half second.');
+}
+
+function showLive(p) {
+  const k = argmax(p);
+  $('lEmoji').textContent = EMOJI[k] || '';
+  $('lName').textContent = M.labels[k];
+  $('lConf').textContent = (p[k] * 100).toFixed(1) + '% confidence';
+  updateBars($('lBars'), p, k, null);
+}
+
+function tick() {
+  if (!live.on) return;
+  const sps = live.buf.filter(s => s.t > (live.last ? live.last.t : 0) - 1).length;
+  const l = live.last;
+  if (l) {
+    const f = v => (v >= 0 ? ' ' : '') + v.toFixed(2);
+    $('lRaw').textContent =
+      'acc (g)     ' + l.a.map(f).join(' ') + '\n' +
+      'gyro (rad/s)' + l.w.map(f).join(' ') + '\n' +
+      'samples/s   ' + sps;
+  }
+  if (!live.Rtilt) return;
+  const win = buildWindow(live.buf, currentR());
+  if (!win) return;
+  const p = predict(win);
+  live.recent.push(p);
+  if (live.recent.length > 3) live.recent.shift();
+  showLive(p.map((_, j) => live.recent.reduce((s, q) => s + q[j], 0) / live.recent.length));
+}
+
+async function startLive() {
+  if (!M) return;
+  try {
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+      const p = await DeviceMotionEvent.requestPermission();
+      if (p !== 'granted') {
+        setLiveStatus('Motion permission was not granted (' + p + '). Reload the page and tap Allow.');
+        return;
+      }
+    }
+    window.addEventListener('devicemotion', onMotion);
+    live.on = true;
+    live.buf = [];
+    live.last = null;
+    live.timer = setInterval(tick, 500);
+    $('lStart').textContent = 'Stop';
+    $('lCal').disabled = false;
+    setLiveStatus('Sensors on. Now calibrate (step 2).');
+    setTimeout(() => { if (live.on && !live.last) setLiveStatus('No sensor data after 3 s. Use Safari (not an in-app browser), and check the motion permission.'); }, 3000);
+  } catch (err) {
+    setLiveStatus('Error: ' + err);
+  }
+}
+
+function stopLive() {
+  window.removeEventListener('devicemotion', onMotion);
+  clearInterval(live.timer);
+  live.on = false;
+  live.calib = null;
+  live.Rtilt = null;
+  live.recent = [];
+  $('lStart').textContent = 'Start sensors';
+  $('lCal').disabled = true;
+  $('lRot').disabled = true;
+  $('lEmoji').textContent = '📱';
+  $('lName').textContent = 'Not started';
+  $('lConf').textContent = '';
+  setLiveStatus('Stopped.');
+}
+
+function setTab(name) {
+  const isLive = name === 'live';
+  $('demoPane').hidden = isLive;
+  $('livePane').hidden = !isLive;
+  $('tabDemo').classList.toggle('active', !isLive);
+  $('tabLive').classList.toggle('active', isLive);
+  $('tabDemo').setAttribute('aria-selected', String(!isLive));
+  $('tabLive').setAttribute('aria-selected', String(isLive));
+  if (!isLive && M) drawSignal(M.demo.X[cur]);
+}
+
+function init(m) {
+  M = m;
+  N = M.demo.X.length;
+  results = M.demo.X.map(w => predict(w));
+
+  const params = countNums([M.conv1.w, M.conv1.b, M.conv2.w, M.conv2.b, M.dense.w, M.dense.b]);
+  $('sub').textContent = 'Lightweight 1D CNN · ' + params.toLocaleString('en-US') + ' parameters · runs on this device';
+
+  buildBars($('bars'));
+  buildBars($('lBars'));
+
+  const dots = $('dots');
+  results.forEach((p, i) => {
+    const d = document.createElement('button');
+    d.type = 'button';
+    d.className = 'dot' + (argmax(p) === M.demo.y[i] ? '' : ' wrong');
+    d.setAttribute('aria-label', 'Sample ' + (i + 1));
+    d.onclick = () => show(i);
+    dots.appendChild(d);
+  });
+
+  const correct = results.filter((p, i) => argmax(p) === M.demo.y[i]).length;
+  const misses = {};
+  results.forEach((p, i) => {
+    const k = argmax(p), t = M.demo.y[i];
+    if (k !== t) {
+      const key = M.labels[t] + ' predicted as ' + M.labels[k];
+      misses[key] = (misses[key] || 0) + 1;
+    }
+  });
+  const parts = Object.entries(misses).map(([k, v]) => k + ' ×' + v);
+  $('summary').textContent = correct + ' of ' + N + ' samples correct' + (parts.length ? '. Misses: ' + parts.join('; ') : '.');
+
+  const t = selfTest();
+  const pass = t.maxDiff < 0.001 && t.match === N;
+  const st = $('status');
+  st.textContent = pass
+    ? 'Verified: this page matches the Keras model on ' + t.match + '/' + N + ' samples (max difference ' + t.maxDiff.toExponential(2) + ')'
+    : 'Self-test FAILED: ' + t.match + '/' + N + ' samples match, max difference ' + t.maxDiff.toExponential(2);
+  st.className = 'status' + (pass ? '' : ' fail');
+
+  // dataset gravity direction while standing = mean total acceleration of the Standing demo windows
+  const standing = M.demo.X.filter((w, i) => M.demo.y[i] === 4);
+  if (standing.length) {
+    const g = [0, 0, 0];
+    standing.forEach(w => w.forEach(r => { g[0] += r[6]; g[1] += r[7]; g[2] += r[8]; }));
+    const n = standing.length * standing[0].length;
+    live.gref = [g[0] / n, g[1] / n, g[2] / n];
+  }
+
+  $('prev').onclick = () => show((cur + N - 1) % N);
+  $('next').onclick = () => show((cur + 1) % N);
+  document.addEventListener('keydown', e => {
+    if ($('livePane').hidden) {
+      if (e.key === 'ArrowLeft') $('prev').click();
+      if (e.key === 'ArrowRight') $('next').click();
+    }
+  });
+  window.addEventListener('resize', () => { if (!$('demoPane').hidden) drawSignal(M.demo.X[cur]); });
+  if (window.matchMedia) {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', () => { if (!$('demoPane').hidden) drawSignal(M.demo.X[cur]); });
+  }
+
+  $('tabDemo').onclick = () => setTab('demo');
+  $('tabLive').onclick = () => setTab('live');
+  $('lSign').checked = live.sign === -1;
+  $('lSign').onchange = () => {
+    live.sign = $('lSign').checked ? -1 : 1;
+    live.Rtilt = null;
+    live.recent = [];
+    $('lRot').disabled = true;
+    if (live.on) setLiveStatus('Acceleration sign changed. Calibrate again.');
+  };
+  $('lStart').onclick = () => { if (live.on) stopLive(); else startLive(); };
+  $('lCal').onclick = startCalibration;
+  $('lRot').onclick = () => {
+    live.k = (live.k + 1) % 4;
+    live.recent = [];
+    $('lRot').textContent = 'Rotate axes: ' + (live.k * 90) + '°';
+  };
+  show(0);
+}
+
+fetch('model.json')
+  .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+  .then(init)
+  .catch(err => {
+    $('predName').textContent = 'Could not load the model';
+    $('status').textContent = 'Error: ' + err + '. Open this page from its https address, and check that model.json is in the same folder.';
+    $('status').className = 'status fail';
+  });
+</script>
+</body>
+</html>
